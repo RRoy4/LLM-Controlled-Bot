@@ -35,12 +35,6 @@ Build a complete autonomous **ROS 2 Jazzy** pipeline on top of **Nav2**, **SLAM 
 - Exploring an unknown map on its own using frontier-based exploration
 - Accepting plain-English commands and turning them into navigation goals via a local LLM
 
-**Overall pipeline:**
-
-```
-Teleoperate → Navigate → Explore → Map → Type a command → LLM parses it → Robot goes there
-```
-
 ---
 
 ## System Overview
