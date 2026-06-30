@@ -179,7 +179,7 @@ Send the resolved goal to the Nav2 `NavigateToPose` action server in a backgroun
 **✅ How to check:**
 ```bash
 # Start nav stack on the maze world — map auto-loads as map_maze.yaml if you saved it under that name
-ros2 launch diff_drive_robot robot.launch.py world:=src/diff_drive_robot-main/worlds/maze.world
+ros2 launch diff_drive_robot robot.launch.py world_name:=maze
 
 # Separate terminal — start the LLM navigator
 ros2 run diff_drive_robot llm_nav.py
