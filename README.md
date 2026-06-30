@@ -73,7 +73,7 @@ git clone -b starter-branch https://github.com/RRoy4/LLM-Controlled-Bot.git
 
 ## What You Need To Implement
 
-There are **5 files with TODOs** to complete. Each one already exists in the repo you've cloned, inside `scripts/` — you're not creating new files, you're opening and editing the ones that are already there. The ROS 2 node boilerplate — parameters, publishers, subscribers, `main()` — is already written. What's missing is the core logic.
+There are **5 files with TODOs** to complete. Each one already exists in the repo you've cloned, inside `scripts/`. 
 
 | # | File | What you implement |
 |---|---|---|
