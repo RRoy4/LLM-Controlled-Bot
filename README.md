@@ -70,7 +70,7 @@ There are **5 files with TODOs** to complete. Each one already exists in the rep
 | 1 | `scripts/keyboard_teleop.py` | Keypress → `Twist` |
 | 2 | `scripts/navigation.py` | Obstacle detection, clear-direction search, navigation FSM |
 | 3 | `scripts/frontier_explorer.py` | Frontier detection, frontier selection |
-| 4 | `scripts/llm_nav.py` | Goal resolution, goal dispatch |
+| 4 | `scripts/llm_nav.py` | System prompt, Ollama API call, JSON extraction, goal resolution, goal dispatch, result handling |
 | 5 | `scripts/obstacle_tracker.py` | Closing-ray detection, point clustering |
 
 Three other files in `scripts/` are **complete, working reference implementations** you don't need to modify, but are worth reading once you've finished the corresponding TODO file above — they solve a related problem a different way, and comparing your approach to theirs is a good way to sanity-check your own design:
@@ -164,13 +164,29 @@ Open RViz and add a `MarkerArray` display on `/obstacle_tracker/markers` — you
 
 ### 5. LLM Navigation — `scripts/llm_nav.py`
 
-**TODO 1 — Goal Resolution**
+**TODO 1 — System prompt**
 
-Given the parsed JSON response from the LLM (`{"action": "go", "location": "room_a"}` or `{"action": "go", "x": ..., "y": ...}`), resolve it into an `(x, y, yaw)` goal — looking up named locations in `config/locations.yaml` where needed — and reject anything malformed or unknown.
+Write the `_SYSTEM` string that instructs the LLM to return only a JSON object. It must handle four cases — named location, raw coordinates, stop, and anything else — and include format placeholders `{locations}` and `{command}` which get filled in at runtime. Include at least two examples in the prompt so the model has concrete patterns to follow. The quality of this prompt directly determines whether the model returns parseable JSON or garbage — experiment with it.
 
-**TODO 2 — Goal Dispatch**
+**TODO 2 — Ollama API call**
 
-Send the resolved goal to the Nav2 `NavigateToPose` action server in a background thread (so the ROS executor never blocks), wait for the result, and report whether the goal succeeded, including how close the robot actually ended up to the target.
+Implement `call_ollama()`. Send a POST request to `{base_url}/api/generate` with the model name, prompt, `stream: false`, and `format: "json"` in the JSON body. Parse the response and return the model's text from `response["response"]`. Use only stdlib (`urllib.request`, `json`) — no third-party HTTP libraries.
+
+**TODO 3 — JSON extraction**
+
+Implement `_extract_json()`. The LLM will often wrap its JSON in prose or markdown even when told not to. Use a regex to find the first `{...}` block in the raw output string, then parse and return it. Return `None` if nothing valid is found.
+
+**TODO 4 — Goal resolution**
+
+Given the parsed JSON dict (one of `stop`, `unknown`, `go` with a location name, or `go` with raw coordinates), resolve it into an `(x, y, yaw_deg)` tuple. Look up named locations in `self._locations`, cancel goals on stop, log warnings on unknown actions, and return `None` for anything malformed.
+
+**TODO 5 — Goal dispatch**
+
+Implement `_send_goal()` and `_send_goal_thread()`. Dispatch the goal in a background daemon thread so the ROS executor never blocks. In the thread, wait for the Nav2 action server (up to 60s), build a `PoseStamped` using `_yaw_to_quat()`, store `self._goal_xy` and `self._nav_start_time`, and send the goal with `_goal_accepted_cb` and `_feedback_cb` registered.
+
+**TODO 6 — Result handling**
+
+Implement `_result_cb()`. Check the goal status, log success or failure, compute the Euclidean distance between `self._goal_xy` and `self._current_pose` and log it as accuracy, include elapsed time and recovery count in the log. Always clear `self._busy` at the end.
 
 > `config/locations.yaml` ships with the key structure in place but no coordinates filled in. You'll populate it yourself once you've explored and mapped the world — this is intentional.
 
@@ -179,7 +195,7 @@ Send the resolved goal to the Nav2 `NavigateToPose` action server in a backgroun
 **✅ How to check:**
 ```bash
 # Start nav stack on the maze world — map auto-loads as map_maze.yaml if you saved it under that name
-ros2 launch diff_drive_robot robot.launch.py world_name:=maze
+ros2 launch diff_drive_robot robot.launch.py world_name:=map
 
 # Separate terminal — start the LLM navigator
 ros2 run diff_drive_robot llm_nav.py
@@ -187,10 +203,6 @@ ros2 run diff_drive_robot llm_nav.py
 Try a named location (`go to room_a`), raw coordinates (`go to 2.5 1.0`), and something invalid (a typo'd location name, or gibberish text) — confirm the valid commands send the robot to the right place and the invalid one is rejected cleanly instead of crashing the node or sending a bogus goal.
 
 > `robot.launch.py` takes a full path via `world:=`, not the short `world_name:=` shorthand used in the exploration step — but it auto-discovers your saved map (`map_<world_name>.yaml`) as long as you used `map_saver_cli -f .../map_maze` like in the exploration check above, so you don't need to pass `map:=` by hand.
-
----
-
-
 
 ---
 
@@ -253,7 +265,7 @@ Show, in order:
 Briefly describe:
 - Your navigation FSM (or PID) design and how you tuned it
 - Your frontier detection and selection strategy
-- How you structured your LLM prompt and handled malformed responses
+- How you structured your LLM system prompt, what you tried that didn't work, and how prompt design affected the model's output quality
 - Challenges faced and what you'd improve given more time
 
 ---
