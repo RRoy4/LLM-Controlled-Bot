@@ -61,6 +61,16 @@ A node that takes plain-English text (typed or published to a topic), sends it t
 
 ---
 
+## Download ROS package
+
+To download the starter package, clone the following git repo with the `starter-branch` into your colcon workspace:
+
+```bash
+git clone -b starter-branch https://github.com/RRoy4/LLM-Controlled-Bot.git
+```
+
+---
+
 ## What You Need To Implement
 
 There are **5 files with TODOs** to complete. Each one already exists in the repo you've cloned, inside `scripts/` — you're not creating new files, you're opening and editing the ones that are already there. The ROS 2 node boilerplate — parameters, publishers, subscribers, `main()` — is already written. What's missing is the core logic.
