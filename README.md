@@ -1,4 +1,4 @@
-# LLM-Controlled Bot
+# LLM-Controlled Autonomous Navigation Bot
 
 ---
 
@@ -35,6 +35,12 @@ Build a complete autonomous **ROS 2 Jazzy** pipeline on top of **Nav2**, **SLAM 
 - Exploring an unknown map on its own using frontier-based exploration
 - Accepting plain-English commands and turning them into navigation goals via a local LLM
 
+**Overall pipeline:**
+
+```
+Teleoperate → Navigate → Explore → Map → Type a command → LLM parses it → Robot goes there
+```
+
 ---
 
 ## System Overview
@@ -57,7 +63,21 @@ A node that takes plain-English text (typed or published to a topic), sends it t
 
 ## What You Need To Implement
 
-This repository contains several TODOs that must be completed. The ROS 2 node boilerplate — parameters, publishers, subscribers, `main()` — is already written. What's missing is the core logic.
+There are **5 files with TODOs** to complete. Each one already exists in the repo you've cloned, inside `scripts/` — you're not creating new files, you're opening and editing the ones that are already there. The ROS 2 node boilerplate — parameters, publishers, subscribers, `main()` — is already written. What's missing is the core logic.
+
+| # | File | What you implement |
+|---|---|---|
+| 1 | `scripts/keyboard_teleop.py` | Keypress → `Twist` |
+| 2 | `scripts/navigation.py` | Obstacle detection, clear-direction search, navigation FSM |
+| 3 | `scripts/frontier_explorer.py` | Frontier detection, frontier selection |
+| 4 | `scripts/llm_nav.py` | Goal resolution, goal dispatch |
+| 5 | `scripts/obstacle_tracker.py` | Closing-ray detection, point clustering |
+
+Three other files in `scripts/` are **complete, working reference implementations** you don't need to modify, but are worth reading once you've finished the corresponding TODO file above — they solve a related problem a different way, and comparing your approach to theirs is a good way to sanity-check your own design:
+
+- **`pid_controller.py`** — solves the same goal-seeking problem as `navigation.py`, but with two independent PID loops (heading + distance) instead of a state machine. Worth running side-by-side with your finished `navigation.py` to compare how an FSM and a PID controller each handle the same goal.
+- **`path_planning.py`** — a complete A* implementation (`ImprovedAStar`), demonstrating grid-based path planning with 8-direction movement and an obstacle safety margin. Note it currently plans against a small hardcoded obstacle list and a fixed start/goal, not the live map — useful as an A* reference, not a drop-in replacement for `frontier_explorer.py`.
+- **`waypoint_nav.py`** — a working waypoint follower built on Nav2's `FollowWaypoints` action, with support for named locations (resolved from `config/locations.yaml`), raw coordinates, and patrol/loop mode. Useful to look at once you've populated `locations.yaml` for the LLM navigation step — it reads the same file.
 
 ### 1. Teleoperation — `scripts/keyboard_teleop.py`
 
@@ -88,7 +108,7 @@ When an obstacle is detected, scan a range of headings around the robot and find
 
 Implement the four-state FSM (`GOAL_SEEK → FIND_CLEAR → MOVE_CLEAR → REALIGN`) that ties detection and direction-finding together into continuous goal-reaching behavior, publishing `Twist` commands every cycle.
 
-> A second controller, `scripts/pid_controller.py`, asks you to solve the same goal-seeking problem using two independent PID loops (heading and distance) instead of an FSM — useful for comparing control strategies.
+> Once this is working, take a look at `scripts/pid_controller.py` — a complete reference implementation that solves the same goal-seeking problem using two independent PID loops (heading and distance) instead of an FSM. Comparing the two is a good way to see how control-strategy choice affects behavior.
 
 **✅ How to check:**
 ```bash
@@ -117,7 +137,32 @@ Open RViz and watch the occupancy grid — the robot should start moving toward 
 
 ---
 
-### 4. LLM Navigation — `scripts/llm_nav.py`
+### 4. Obstacle Tracker — `scripts/obstacle_tracker.py`
+
+A moving-obstacle detector that compares consecutive laser scans to find objects approaching the robot, clusters the detected points in the map frame, and publishes them as RViz markers.
+
+**TODO 1 — Closing-ray detection**
+
+On each incoming `/scan`, compare it against a scan from `self._lookback` frames ago. For each ray, compute the closing speed (`(r_prev - r_now) / dt`). If it exceeds `self._min_speed`, the ray endpoint (in robot frame) is an approaching point. Collect all such points, transform them into the map frame using TF, then pass the result to `_cluster()`.
+
+**TODO 2 — Point clustering**
+
+Given a flat list of `(x, y)` map-frame points, group them using single-linkage clustering: any two points within `self._cluster_r` metres of each other belong to the same cluster. Return a list of dicts, one per cluster, each with the cluster centroid `x`, `y`, and `count` of member points.
+
+**✅ How to check:**
+```bash
+ros2 launch diff_drive_robot slam_nav.launch.py world_name:=obstacles
+ros2 run diff_drive_robot obstacle_tracker.py
+```
+In a separate terminal, echo the state topic and confirm clusters appear when something moves in front of the robot:
+```bash
+ros2 topic echo /obstacle_tracker/state
+```
+Open RViz and add a `MarkerArray` display on `/obstacle_tracker/markers` — you should see red spheres appear at the location of any moving object and disappear once it stops.
+
+---
+
+### 5. LLM Navigation — `scripts/llm_nav.py`
 
 **TODO 1 — Goal Resolution**
 
@@ -133,13 +178,19 @@ Send the resolved goal to the Nav2 `NavigateToPose` action server in a backgroun
 
 **✅ How to check:**
 ```bash
-# Start nav stack on your saved map
-ros2 launch diff_drive_robot robot.launch.py map:=src/diff_drive_robot-main/maps/map_maze.yaml
+# Start nav stack on the maze world — map auto-loads as map_maze.yaml if you saved it under that name
+ros2 launch diff_drive_robot robot.launch.py world:=src/diff_drive_robot-main/worlds/maze.world
 
 # Separate terminal — start the LLM navigator
 ros2 run diff_drive_robot llm_nav.py
 ```
 Try a named location (`go to room_a`), raw coordinates (`go to 2.5 1.0`), and something invalid (a typo'd location name, or gibberish text) — confirm the valid commands send the robot to the right place and the invalid one is rejected cleanly instead of crashing the node or sending a bogus goal.
+
+> `robot.launch.py` takes a full path via `world:=`, not the short `world_name:=` shorthand used in the exploration step — but it auto-discovers your saved map (`map_<world_name>.yaml`) as long as you used `map_saver_cli -f .../map_maze` like in the exploration check above, so you don't need to pass `map:=` by hand.
+
+---
+
+
 
 ---
 
@@ -195,6 +246,7 @@ Show, in order:
 - Keyboard teleoperation
 - Custom navigation reaching a goal and avoiding an obstacle
 - Frontier exploration completing a full map
+- Obstacle tracker detecting a moving object (red spheres visible in RViz)
 - LLM navigation responding correctly to at least three different plain-English commands
 
 ### 3. Report
