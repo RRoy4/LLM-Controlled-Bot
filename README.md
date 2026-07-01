@@ -259,7 +259,7 @@ ollama pull tinyllama
 ## Deliverables
 
 ### 1. Source Code
-- Completed implementations for all TODOs
+- Completed implementations for all TODOs along with comments describing what you are doing
 - Working ROS 2 package, building cleanly with `colcon build`
 - All provided launch files functioning unmodified
 
