@@ -1,4 +1,4 @@
-# LLM-Controlled Autonomous Navigation Bot
+# SmartBOT — LLM-Powered Autonomous Exploration Bot
 
 ---
 
